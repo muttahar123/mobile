@@ -2,9 +2,8 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// For Android emulator it needs 10.0.2.2 instead of localhost
-// For iOS simulator and Web it can use localhost
-const DEV_URL = Platform.OS === 'android' ? 'http://10.0.2.2:5000' : 'http://localhost:5000';
+// Using local network IP so physical devices via Expo Go can reach the backend
+const DEV_URL = 'http://192.168.100.26:5000';
 
 const api = axios.create({
   baseURL: DEV_URL,
