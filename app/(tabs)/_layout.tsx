@@ -1,44 +1,44 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore } from '../../store/authStore';
-import { TouchableOpacity, View } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 
 export default function TabLayout() {
-  const logout = useAuthStore((state) => state.logout);
-
   return (
     <Tabs
       screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: '#141414', shadowColor: 'transparent', elevation: 0 },
-        headerTintColor: '#fff',
+        headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#1f1f1f',
-          borderTopColor: '#374151',
-          paddingBottom: 5,
+          backgroundColor: '#18181b',
+          borderTopWidth: 1,
+          borderTopColor: '#27272a',
+          height: Platform.OS === 'ios' ? 88 : 68,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+          paddingTop: 10,
         },
-        tabBarActiveTintColor: '#FBBF24',
-        tabBarInactiveTintColor: '#9ca3af',
+        tabBarActiveTintColor: '#a78bfa',
+        tabBarInactiveTintColor: '#52525b',
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Tasks',
-          tabBarIcon: ({ color }) => <Ionicons name="list" size={24} color={color} />,
-          headerRight: () => (
-            <TouchableOpacity onPress={logout} style={{ marginRight: 15 }}>
-              <Ionicons name="log-out-outline" size={24} color="#f87171" />
-            </TouchableOpacity>
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "layers" : "layers-outline"} size={24} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="create"
         options={{
-          title: 'New Task',
-          tabBarIcon: ({ color }) => (
-            <View style={{ backgroundColor: '#FBBF24', borderRadius: 20, padding: 2, marginTop: -15, shadowColor: '#FBBF24', shadowOpacity: 0.3, shadowRadius: 10 }}>
-              <Ionicons name="add" size={28} color="#000" />
+          title: 'New',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.addButton, focused && styles.addButtonActive]}>
+              <Ionicons name="add" size={24} color={focused ? '#fff' : '#a1a1aa'} />
             </View>
           ),
         }}
@@ -46,3 +46,18 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#27272a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -4,
+  },
+  addButtonActive: {
+    backgroundColor: '#6d28d9',
+  },
+});

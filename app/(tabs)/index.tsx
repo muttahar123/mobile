@@ -1,45 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import api from '../../api';
+import { useAuthStore } from '../../store/authStore';
 
 export default function TasksDashboard() {
   const [tasks, setTasks] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
 
-  // For debounce
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [search]);
-
-  const fetchTasks = async (pageNum = 1, isRefresh = false) => {
+  const fetchTasks = async (isRefresh = false) => {
     try {
-      if (pageNum === 1 && !isRefresh) setLoading(true);
-      const res = await api.get('/api/tasks', {
-        params: {
-          page: pageNum,
-          limit: 10,
-          search: debouncedSearch,
-          status,
-        },
-      });
-      if (pageNum === 1) {
-        setTasks(res.data.tasks);
-      } else {
-        setTasks((prev) => [...prev, ...res.data.tasks]);
-      }
-      setTotalPages(res.data.pages);
-      setPage(pageNum);
+      if (!isRefresh) setLoading(true);
+      const params: any = { limit: 50 };
+      if (filter !== 'all') params.status = filter;
+      const res = await api.get('/api/tasks', { params });
+      setTasks(res.data.tasks || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -48,89 +28,155 @@ export default function TasksDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchTasks(1);
-  }, [debouncedSearch, status]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchTasks();
+    }, [filter])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchTasks(1, true);
-  }, [debouncedSearch, status]);
-
-  const loadMore = () => {
-    if (page < totalPages && !loading) {
-      fetchTasks(page + 1);
-    }
-  };
+    fetchTasks(true);
+  }, [filter]);
 
   const toggleTaskStatus = async (taskId: string, currentStatus: string) => {
     try {
       const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
-      await api.put(`/api/tasks/${taskId}`, { status: newStatus });
       setTasks(tasks.map(t => t._id === taskId ? { ...t, status: newStatus } : t));
+      await api.put(`/api/tasks/${taskId}`, { status: newStatus });
     } catch (error) {
       console.error(error);
+      fetchTasks();
     }
   };
 
+  const deleteTask = async (taskId: string) => {
+    try {
+      setTasks(tasks.filter(t => t._id !== taskId));
+      await api.delete(`/api/tasks/${taskId}`);
+    } catch (error) {
+      console.error(error);
+      fetchTasks();
+    }
+  };
+
+  const pendingCount = tasks.filter(t => t.status === 'pending').length;
+  const completedCount = tasks.filter(t => t.status === 'completed').length;
+
+  const filters: Array<{ key: 'all' | 'pending' | 'completed'; label: string; count: number }> = [
+    { key: 'all', label: 'All', count: tasks.length },
+    { key: 'pending', label: 'Pending', count: pendingCount },
+    { key: 'completed', label: 'Done', count: completedCount },
+  ];
+
   const renderTask = ({ item }: { item: any }) => (
-    <View className="bg-secondary rounded-2xl p-5 mb-4 border border-gray-800 shadow-sm flex-row items-center">
-      <TouchableOpacity onPress={() => toggleTaskStatus(item._id, item.status)} className="mr-4">
+    <View style={s.taskCard}>
+      <TouchableOpacity
+        onPress={() => toggleTaskStatus(item._id, item.status)}
+        style={s.checkboxArea}
+        activeOpacity={0.7}
+      >
         {item.status === 'completed' ? (
-          <Ionicons name="checkmark-circle" size={28} color="#10b981" />
+          <View style={s.checkboxDone}>
+            <Ionicons name="checkmark" size={16} color="#fff" />
+          </View>
         ) : (
-          <Ionicons name="ellipse-outline" size={28} color="#6b7280" />
+          <View style={s.checkboxPending} />
         )}
       </TouchableOpacity>
-      <View className="flex-1">
-        <Text className={`text-lg font-semibold ${item.status === 'completed' ? 'text-gray-500 line-through' : 'text-white'}`}>
+
+      <View style={s.taskContent}>
+        <Text style={[s.taskTitle, item.status === 'completed' && s.taskTitleDone]}>
           {item.title}
         </Text>
-        <Text className="text-gray-400 mt-1" numberOfLines={2}>{item.description}</Text>
+        {item.description ? (
+          <Text style={[s.taskDesc, item.status === 'completed' && s.taskDescDone]} numberOfLines={2}>
+            {item.description}
+          </Text>
+        ) : null}
+        <View style={s.taskMeta}>
+          <View style={[s.statusBadge, item.status === 'completed' ? s.badgeDone : s.badgePending]}>
+            <Text style={[s.statusBadgeText, item.status === 'completed' ? s.badgeDoneText : s.badgePendingText]}>
+              {item.status === 'completed' ? 'Completed' : 'Pending'}
+            </Text>
+          </View>
+        </View>
       </View>
+
+      <TouchableOpacity onPress={() => deleteTask(item._id)} style={s.deleteBtn} activeOpacity={0.7}>
+        <Ionicons name="trash-outline" size={18} color="#52525b" />
+      </TouchableOpacity>
     </View>
   );
 
   return (
-    <View className="flex-1 bg-primary px-4 pt-12">
-      <Text className="text-3xl font-bold text-white mb-6">My Tasks</Text>
-
-      {/* Search and Filter */}
-      <View className="flex-row items-center space-x-3 mb-6">
-        <View className="flex-1 bg-secondary flex-row items-center px-4 rounded-xl border border-gray-800 h-12">
-          <Ionicons name="search" size={20} color="#9ca3af" />
-          <TextInput
-            className="flex-1 text-white ml-2"
-            placeholder="Search tasks..."
-            placeholderTextColor="#9ca3af"
-            value={search}
-            onChangeText={setSearch}
-          />
+    <View style={s.container}>
+      {/* Header */}
+      <View style={s.header}>
+        <View>
+          <Text style={s.greeting}>Hi, {user?.name || 'there'} 👋</Text>
+          <Text style={s.headerTitle}>Your Tasks</Text>
         </View>
-        
-        <TouchableOpacity 
-          onPress={() => setStatus(status === 'pending' ? '' : 'pending')}
-          className={`h-12 px-4 rounded-xl justify-center border ${status === 'pending' ? 'bg-accent border-accent' : 'bg-secondary border-gray-800'}`}
-        >
-          <Text className={`${status === 'pending' ? 'text-black font-semibold' : 'text-white'}`}>Pending</Text>
+        <TouchableOpacity onPress={logout} style={s.logoutBtn} activeOpacity={0.8}>
+          <Ionicons name="log-out-outline" size={20} color="#ef4444" />
         </TouchableOpacity>
       </View>
 
-      {/* List */}
-      {loading && page === 1 ? (
-        <ActivityIndicator color="white" className="mt-10" />
+      {/* Stats */}
+      <View style={s.statsRow}>
+        <View style={[s.statCard, { backgroundColor: '#1e1b4b' }]}>
+          <Text style={s.statNumber}>{pendingCount}</Text>
+          <Text style={s.statLabel}>Pending</Text>
+        </View>
+        <View style={[s.statCard, { backgroundColor: '#052e16' }]}>
+          <Text style={s.statNumber}>{completedCount}</Text>
+          <Text style={s.statLabel}>Completed</Text>
+        </View>
+        <View style={[s.statCard, { backgroundColor: '#18181b' }]}>
+          <Text style={s.statNumber}>{tasks.length}</Text>
+          <Text style={s.statLabel}>Total</Text>
+        </View>
+      </View>
+
+      {/* Filters */}
+      <View style={s.filterRow}>
+        {filters.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            onPress={() => setFilter(f.key)}
+            style={[s.filterPill, filter === f.key && s.filterPillActive]}
+            activeOpacity={0.8}
+          >
+            <Text style={[s.filterPillText, filter === f.key && s.filterPillTextActive]}>
+              {f.label}
+            </Text>
+            <View style={[s.filterCount, filter === f.key && s.filterCountActive]}>
+              <Text style={[s.filterCountText, filter === f.key && s.filterCountTextActive]}>{f.count}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Task List */}
+      {loading ? (
+        <View style={s.loadingContainer}>
+          <ActivityIndicator size="large" color="#6d28d9" />
+        </View>
       ) : (
         <FlatList
           data={tasks}
           keyExtractor={(item) => item._id}
           renderItem={renderTask}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6d28d9" />}
           ListEmptyComponent={
-            <View className="items-center mt-20">
-              <Ionicons name="document-text-outline" size={48} color="#4b5563" />
-              <Text className="text-gray-400 text-lg mt-4">No tasks found</Text>
+            <View style={s.empty}>
+              <View style={s.emptyIcon}>
+                <Ionicons name="checkmark-done-outline" size={48} color="#3f3f46" />
+              </View>
+              <Text style={s.emptyTitle}>No tasks yet</Text>
+              <Text style={s.emptySubtitle}>Tap the + button below to create your first task</Text>
             </View>
           }
         />
@@ -138,3 +184,231 @@ export default function TasksDashboard() {
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#09090b',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  greeting: {
+    color: '#71717a',
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  logoutBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#18181b',
+    borderWidth: 1,
+    borderColor: '#27272a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#27272a',
+  },
+  statNumber: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  statLabel: {
+    color: '#71717a',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
+  },
+  filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 50,
+    backgroundColor: '#18181b',
+    borderWidth: 1,
+    borderColor: '#27272a',
+    gap: 8,
+  },
+  filterPillActive: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  filterPillText: {
+    color: '#a1a1aa',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filterPillTextActive: {
+    color: '#09090b',
+  },
+  filterCount: {
+    backgroundColor: '#27272a',
+    borderRadius: 50,
+    minWidth: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  filterCountActive: {
+    backgroundColor: '#09090b',
+  },
+  filterCountText: {
+    color: '#71717a',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  filterCountTextActive: {
+    color: '#fff',
+  },
+  taskCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#18181b',
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#27272a',
+  },
+  checkboxArea: {
+    marginRight: 16,
+  },
+  checkboxPending: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#3f3f46',
+    backgroundColor: '#27272a',
+  },
+  checkboxDone: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: '#6d28d9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  taskContent: {
+    flex: 1,
+  },
+  taskTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  taskTitleDone: {
+    color: '#52525b',
+    textDecorationLine: 'line-through',
+  },
+  taskDesc: {
+    color: '#71717a',
+    fontSize: 14,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  taskDescDone: {
+    color: '#3f3f46',
+  },
+  taskMeta: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 50,
+  },
+  badgePending: {
+    backgroundColor: '#1e1b4b',
+  },
+  badgeDone: {
+    backgroundColor: '#052e16',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  badgePendingText: {
+    color: '#a78bfa',
+  },
+  badgeDoneText: {
+    color: '#4ade80',
+  },
+  deleteBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#27272a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  empty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 80,
+    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#18181b',
+    borderWidth: 1,
+    borderColor: '#27272a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    color: '#71717a',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+});

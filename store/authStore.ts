@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AuthState {
   token: string | null;
@@ -15,18 +15,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isHydrated: false,
   login: async (userData, token) => {
-    await SecureStore.setItemAsync('token', token);
-    await SecureStore.setItemAsync('user', JSON.stringify(userData));
+    await AsyncStorage.setItem('token', token);
+    await AsyncStorage.setItem('user', JSON.stringify(userData));
     set({ token, user: userData });
   },
   logout: async () => {
-    await SecureStore.deleteItemAsync('token');
-    await SecureStore.deleteItemAsync('user');
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('user');
     set({ token: null, user: null });
   },
   hydrate: async () => {
-    const token = await SecureStore.getItemAsync('token');
-    const userStr = await SecureStore.getItemAsync('user');
+    const token = await AsyncStorage.getItem('token');
+    const userStr = await AsyncStorage.getItem('user');
     set({
       token,
       user: userStr ? JSON.parse(userStr) : null,

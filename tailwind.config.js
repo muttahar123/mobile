@@ -1,6 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  // NOTE: Update this to include the paths to all of your component files.
   content: [
     "./app/**/*.{js,jsx,ts,tsx}",
     "./components/**/*.{js,jsx,ts,tsx}"
@@ -9,9 +8,13 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#141414",
-        secondary: "#1f1f1f",
-        accent: "#FBBF24",
+        brand: {
+          dark: '#030712',    // bg-gray-950
+          card: '#111827',    // bg-gray-900
+          border: '#1f2937',  // border-gray-800
+          primary: '#8b5cf6', // violet-500
+          muted: '#9ca3af',   // text-gray-400
+        }
       }
     },
   },
